@@ -32,8 +32,8 @@ protocol AVPlayerItemObserverDelegate: AnyObject {
 class AVPlayerItemObserver: NSObject {
     
     private static var context = 0
-    private let metadataOutput = AVPlayerItemMetadataOutput()
-    
+    private var metadataOutput: AVPlayerItemMetadataOutput? = nil
+
     private struct AVPlayerItemKeyPath {
         static let duration = #keyPath(AVPlayerItem.duration)
         static let loadedTimeRanges = #keyPath(AVPlayerItem.loadedTimeRanges)
@@ -47,7 +47,6 @@ class AVPlayerItemObserver: NSObject {
     
     override init() {
         super.init()
-        metadataOutput.setDelegate(self, queue: .main)
     }
     
     deinit {
@@ -67,14 +66,10 @@ class AVPlayerItemObserver: NSObject {
         item.addObserver(self, forKeyPath: AVPlayerItemKeyPath.duration, options: [.new], context: &AVPlayerItemObserver.context)
         item.addObserver(self, forKeyPath: AVPlayerItemKeyPath.loadedTimeRanges, options: [.new], context: &AVPlayerItemObserver.context)
         item.addObserver(self, forKeyPath: AVPlayerItemKeyPath.playbackLikelyToKeepUp, options: [.new], context: &AVPlayerItemObserver.context)
-        
-        // We must slightly delay adding the metadata output due to the fact that
-        // stop observation is not a synchronous action and metadataOutput may not
-        // be removed from last item before we try to attach it to a new one.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.001) { [weak self] in
-            guard let `self` = self else { return }
-            item.add(self.metadataOutput)
-        }
+        let metadataOutput = AVPlayerItemMetadataOutput()
+        metadataOutput.setDelegate(self, queue: .main)
+        item.add(metadataOutput)
+        self.metadataOutput = metadataOutput
     }
         
     func stopObservingCurrentItem() {
@@ -85,10 +80,13 @@ class AVPlayerItemObserver: NSObject {
         observingItem.removeObserver(self, forKeyPath: AVPlayerItemKeyPath.duration, context: &AVPlayerItemObserver.context)
         observingItem.removeObserver(self, forKeyPath: AVPlayerItemKeyPath.loadedTimeRanges, context: &AVPlayerItemObserver.context)
         observingItem.removeObserver(self, forKeyPath: AVPlayerItemKeyPath.playbackLikelyToKeepUp, context: &AVPlayerItemObserver.context)
-        observingItem.remove(metadataOutput)
+        if let metadataOutput = metadataOutput {
+            observingItem.remove(metadataOutput)
+        }
         
         isObserving = false
         self.observingItem = nil
+        self.metadataOutput = nil
     }
     
     override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
